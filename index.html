@@ -19,8 +19,6 @@
       .action-btn { padding: 0.45rem 0.45rem; font-size: 0.85rem; }
     }
   </style>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body class="bg-dark text-light d-flex flex-column">
 
@@ -134,6 +132,63 @@
     let binary = "";
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  // ===== Завантаження html5-qrcode з fallback CDN =====
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      if (window.Html5Qrcode) return resolve(true);
+
+      const exists = Array.from(document.scripts).some(s => (s.src || "") === src);
+      if (exists) {
+        // якщо тег вже є — трохи зачекаємо поки він дозавантажиться
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries++;
+          if (window.Html5Qrcode) {
+            clearInterval(timer);
+            resolve(true);
+          } else if (tries >= 40) {
+            clearInterval(timer);
+            reject(new Error("Script exists but Html5Qrcode not available: " + src));
+          }
+        }, 100);
+        return;
+      }
+
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = () => {
+        if (window.Html5Qrcode) resolve(true);
+        else reject(new Error("Loaded but Html5Qrcode missing: " + src));
+      };
+      s.onerror = () => reject(new Error("Failed to load: " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensureQrLib() {
+    if (window.Html5Qrcode) return;
+
+    const candidates = [
+      "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js",
+      "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"
+    ];
+
+    let lastErr = null;
+    for (const src of candidates) {
+      try {
+        await loadScriptOnce(src);
+        if (window.Html5Qrcode) return;
+      } catch (e) {
+        lastErr = e;
+        console.warn("[html5-qrcode load fail]", e);
+      }
+    }
+
+    throw lastErr || new Error("Не вдалося завантажити html5-qrcode");
   }
 
   function jsonp(action, payload, timeoutMs = 15000) {
@@ -260,6 +315,9 @@
     try {
       setText("camera-status", "Запуск камери...");
       setText("action-status", "");
+
+      // ✅ Спочатку гарантуємо завантаження бібліотеки
+      await ensureQrLib();
 
       qr = qr || new Html5Qrcode("qr-reader", true);
       const config = {
