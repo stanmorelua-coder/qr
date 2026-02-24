@@ -18,6 +18,18 @@
     @media (max-width: 420px) {
       .action-btn { padding: 0.45rem 0.45rem; font-size: 0.85rem; }
     }
+    details.debug-box {
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: .5rem;
+      padding: .5rem .75rem;
+      background: rgba(255,255,255,.03);
+    }
+    .small-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      word-break: break-all;
+      font-size: .8rem;
+      opacity: .9;
+    }
   </style>
 </head>
 <body class="bg-dark text-light d-flex flex-column">
@@ -80,6 +92,16 @@
     </div>
   </div>
 
+  <div class="mb-3">
+    <details class="debug-box">
+      <summary class="small">Debug API</summary>
+      <div class="mt-2 d-flex gap-2 flex-wrap">
+        <button id="btnApiPing" class="btn btn-outline-info btn-sm" type="button">Перевірити API (ping)</button>
+      </div>
+      <div id="debug-info" class="small-code mt-2"></div>
+    </details>
+  </div>
+
   <div>
     <div class="d-flex align-items-center justify-content-between mb-2">
       <div class="fw-semibold">Результати</div>
@@ -96,9 +118,8 @@
 <script>
   // =====================================================================
   // ВСТАВ СЮДИ URL ВЕБ-ДОДАТКУ APPS SCRIPT (саме /exec)
-  // Наприклад: https://script.google.com/macros/s/AKfycb.../exec
   // =====================================================================
-  const API_BASE = "https://script.google.com/macros/s/AKfycbzUyYUh9Vm6y8FBw3JxzuzNmPGkE73_CYvKONv61_0JUYMqq5KfGyaBtMDY2qfZfrQwGA/exec";
+  const API_BASE = "https://script.google.com/macros/s/AKfycbxM2VEUjPpUtPTGNiS0C38p0e7dmtxqDPAj0yROXDy3miZYENsGLaar4lS9RhBREDcZtw/exec".trim();
 
   // scanned list
   let scannedCodes = [];
@@ -110,6 +131,9 @@
   // html5-qrcode instance
   let qr = null;
   let running = false;
+
+  // debug
+  let lastJsonpUrl = "";
 
   function qs(name) {
     const url = new URL(location.href);
@@ -124,6 +148,28 @@
   function setHtml(id, html) {
     const el = document.getElementById(id);
     if (el) el.innerHTML = html || "";
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function setDebugInfo(msg, extraUrl) {
+    const el = document.getElementById("debug-info");
+    if (!el) return;
+    let html = "";
+    if (msg) html += `<div>${escapeHtml(msg)}</div>`;
+    if (extraUrl) {
+      html += `<div class="mt-1">URL:</div>`;
+      html += `<div>${escapeHtml(extraUrl)}</div>`;
+      html += `<div class="mt-1"><a class="link-light" href="${extraUrl}" target="_blank" rel="noopener">Відкрити URL вручну</a></div>`;
+    }
+    el.innerHTML = html;
   }
 
   // base64url для JSON payload (UTF-8)
@@ -141,7 +187,6 @@
 
       const exists = Array.from(document.scripts).some(s => (s.src || "") === src);
       if (exists) {
-        // якщо тег вже є — трохи зачекаємо поки він дозавантажиться
         let tries = 0;
         const timer = setInterval(() => {
           tries++;
@@ -191,18 +236,26 @@
     throw lastErr || new Error("Не вдалося завантажити html5-qrcode");
   }
 
+  function buildJsonpUrl(action, payload, cbName) {
+    const token = qs("token") || qs("t") || "";
+    const p = b64u(JSON.stringify(payload || {}));
+
+    return (
+      API_BASE +
+      "?action=" + encodeURIComponent(action) +
+      "&token=" + encodeURIComponent(token) +
+      "&p=" + encodeURIComponent(p) +
+      "&callback=" + encodeURIComponent(cbName) +
+      "&_=" + Date.now()
+    );
+  }
+
   function jsonp(action, payload, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
       const cb = "__cb_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
-      const token = qs("token") || qs("t");
-      const p = b64u(JSON.stringify(payload || {}));
-
-      const url =
-        API_BASE +
-        "?action=" + encodeURIComponent(action) +
-        "&token=" + encodeURIComponent(token) +
-        "&p=" + encodeURIComponent(p) +
-        "&callback=" + encodeURIComponent(cb);
+      const url = buildJsonpUrl(action, payload, cb);
+      lastJsonpUrl = url;
+      setDebugInfo("JSONP request сформовано.", url);
 
       const script = document.createElement("script");
       let done = false;
@@ -211,7 +264,7 @@
         if (done) return;
         done = true;
         cleanup();
-        reject(new Error("Timeout"));
+        reject(new Error("Timeout (API не відповів за " + timeoutMs + "мс)"));
       }, timeoutMs);
 
       function cleanup() {
@@ -224,6 +277,7 @@
         if (done) return;
         done = true;
         cleanup();
+        setDebugInfo("JSONP callback отримано ✅", url);
         resolve(data);
       };
 
@@ -231,11 +285,13 @@
         if (done) return;
         done = true;
         cleanup();
-        reject(new Error("Network/blocked"));
+        reject(new Error("Network/blocked (перевір /exec, доступ Web App = Anyone, та відкрий debug URL вручну)"));
       };
 
       script.src = url;
-      document.body.appendChild(script);
+      script.async = true;
+      script.referrerPolicy = "no-referrer";
+      document.head.appendChild(script);
     });
   }
 
@@ -495,6 +551,30 @@
     }
   }
 
+  async function apiPingCheck(showSuccess = false) {
+    try {
+      const ping = await jsonp("ping", {}, 12000);
+      if (ping && ping.ok) {
+        if (showSuccess) setText("action-status", "✅ API ping успішний.");
+        return true;
+      }
+      setText("action-status", "⚠️ API відповів, але не OK. Перевір токен/API.");
+      return false;
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : String(e);
+      setText("action-status", "⚠️ API ping не пройшов: " + msg);
+
+      // Показуємо пряме посилання для ручної перевірки
+      const testCb = "manualcb";
+      const debugUrl = buildJsonpUrl("ping", {}, testCb);
+      setDebugInfo(
+        "Не вдалося завантажити JSONP. Відкрий URL нижче вручну. Якщо не бачиш manualcb({...}) — проблема в Apps Script deploy/access/URL.",
+        debugUrl
+      );
+      return false;
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     identity.crew = qs("crew");
     identity.poz = qs("poz");
@@ -508,6 +588,7 @@
     document.getElementById("startBtn").onclick = startCamera;
     document.getElementById("stopBtn").onclick = stopCamera;
     document.getElementById("btnClear").onclick = clearScans;
+    document.getElementById("btnApiPing").onclick = () => apiPingCheck(true);
 
     document.getElementById("btnReceived").onclick = async () => {
       hideReturned();
@@ -577,17 +658,11 @@
 
     renderResults();
     setText("camera-status", "Натисни “Запустити камеру 📷”.");
+    setDebugInfo("Готово. Можна перевірити API через кнопку 'Перевірити API (ping)'.");
 
-    // необов'язково: перевірка API одразу після відкриття
+    // первинна перевірка API (необов'язково)
     if (API_BASE && !API_BASE.includes("PASTE_YOUR")) {
-      try {
-        const ping = await jsonp("ping", {});
-        if (!(ping && ping.ok)) {
-          setText("action-status", "⚠️ API відповідає некоректно. Перевір API_BASE або токен.");
-        }
-      } catch (e) {
-        setText("action-status", "⚠️ Не вдалося достукатись до API. Перевір API_BASE (/exec) або доступ Web App.");
-      }
+      await apiPingCheck(false);
     }
   });
 
