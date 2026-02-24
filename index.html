@@ -18,8 +18,18 @@
     @media (max-width: 420px) {
       .action-btn { padding: 0.45rem 0.45rem; font-size: 0.85rem; }
     }
-    .tiny { font-size: 12px; opacity: .8; }
-    .status-link a { color: #9ad0ff; }
+    details.debug-box {
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: .5rem;
+      padding: .5rem .75rem;
+      background: rgba(255,255,255,.03);
+    }
+    .small-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      word-break: break-all;
+      font-size: .8rem;
+      opacity: .9;
+    }
   </style>
 </head>
 <body class="bg-dark text-light d-flex flex-column">
@@ -57,8 +67,7 @@
       <button class="btn btn-danger flex-fill text-nowrap action-btn" type="button" id="btnFlight">Вильот✈️</button>
     </div>
 
-    <div id="action-status" class="small opacity-75 text-center mt-2 status-link"></div>
-    <div id="debug-url" class="tiny text-center mt-1"></div>
+    <div id="action-status" class="small opacity-75 text-center mt-2"></div>
 
     <!-- Flight direction -->
     <div id="flight-direction-block" class="mt-2 d-none">
@@ -83,6 +92,16 @@
     </div>
   </div>
 
+  <div class="mb-3">
+    <details class="debug-box">
+      <summary class="small">Debug API</summary>
+      <div class="mt-2 d-flex gap-2 flex-wrap">
+        <button id="btnApiPing" class="btn btn-outline-info btn-sm" type="button">Перевірити API (ping)</button>
+      </div>
+      <div id="debug-info" class="small-code mt-2"></div>
+    </details>
+  </div>
+
   <div>
     <div class="d-flex align-items-center justify-content-between mb-2">
       <div class="fw-semibold">Результати</div>
@@ -98,15 +117,9 @@
 
 <script>
   // =====================================================================
-  // ✅ Основний Apps Script /exec URL
+  // ВСТАВ СЮДИ URL ВЕБ-ДОДАТКУ APPS SCRIPT (саме /exec)
   // =====================================================================
-  const API_BASES = [
-   https://script.google.com/macros/s/AKfycbxM2VEUjPpUtPTGNiS0C38p0e7dmtxqDPAj0yROXDy3miZYENsGLaar4lS9RhBREDcZtw/exec
-
-    // ✅ Опційно (якщо треба): можна додати 2-й fallback URL з script.googleusercontent.com
-    // Його можна отримати, якщо відкрити ping URL вручну і скопіювати фінальний redirected URL
-    // "https://script.googleusercontent.com/macros/echo?user_content_key=...&lib=..."
-  ];
+  const API_BASE = "https://script.google.com/macros/s/AKfycbxgISh4v95l_msTZ0uLHSGg1xabyFoycRvxtto5GZ8vcvbYbiSmyKi0Of2fn1VHTcjoNQ/exec".trim();
 
   // scanned list
   let scannedCodes = [];
@@ -120,7 +133,7 @@
   let running = false;
 
   // debug
-  let LAST_DEBUG_URL = "";
+  let lastJsonpUrl = "";
 
   function qs(name) {
     const url = new URL(location.href);
@@ -137,23 +150,26 @@
     if (el) el.innerHTML = html || "";
   }
 
-  function esc(s) {
-    return String(s == null ? "" : s)
+  function escapeHtml(s) {
+    return String(s || "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
-  function setDebugUrl(url) {
-    LAST_DEBUG_URL = url || "";
-    const el = document.getElementById("debug-url");
+  function setDebugInfo(msg, extraUrl) {
+    const el = document.getElementById("debug-info");
     if (!el) return;
-    if (!LAST_DEBUG_URL) {
-      el.innerHTML = "";
-      return;
+    let html = "";
+    if (msg) html += `<div>${escapeHtml(msg)}</div>`;
+    if (extraUrl) {
+      html += `<div class="mt-1">URL:</div>`;
+      html += `<div>${escapeHtml(extraUrl)}</div>`;
+      html += `<div class="mt-1"><a class="link-light" href="${extraUrl}" target="_blank" rel="noopener">Відкрити URL вручну</a></div>`;
     }
-    el.innerHTML = `Debug URL: <a href="${esc(LAST_DEBUG_URL)}" target="_blank" rel="noopener">відкрити вручну</a>`;
+    el.innerHTML = html;
   }
 
   // base64url для JSON payload (UTF-8)
@@ -220,27 +236,26 @@
     throw lastErr || new Error("Не вдалося завантажити html5-qrcode");
   }
 
-  function buildJsonpUrl(base, action, payload, cbName) {
-    const token = qs("token") || qs("t");
+  function buildJsonpUrl(action, payload, cbName) {
+    const token = qs("token") || qs("t") || "";
     const p = b64u(JSON.stringify(payload || {}));
-    const sep = base.includes("?") ? "&" : "?";
 
     return (
-      base +
-      sep +
-      "action=" + encodeURIComponent(action) +
+      API_BASE +
+      "?action=" + encodeURIComponent(action) +
       "&token=" + encodeURIComponent(token) +
       "&p=" + encodeURIComponent(p) +
       "&callback=" + encodeURIComponent(cbName) +
-      "&_ts=" + Date.now()
+      "&_=" + Date.now()
     );
   }
 
-  function jsonpOne(url, timeoutMs = 15000) {
+  function jsonp(action, payload, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
       const cb = "__cb_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
-      const finalUrl = url.replace("__CALLBACK__", cb);
-      setDebugUrl(finalUrl);
+      const url = buildJsonpUrl(action, payload, cb);
+      lastJsonpUrl = url;
+      setDebugInfo("JSONP request сформовано.", url);
 
       const script = document.createElement("script");
       let done = false;
@@ -249,9 +264,7 @@
         if (done) return;
         done = true;
         cleanup();
-        const err = new Error("Timeout");
-        err.debugUrl = finalUrl;
-        reject(err);
+        reject(new Error("Timeout (API не відповів за " + timeoutMs + "мс)"));
       }, timeoutMs);
 
       function cleanup() {
@@ -264,6 +277,7 @@
         if (done) return;
         done = true;
         cleanup();
+        setDebugInfo("JSONP callback отримано ✅", url);
         resolve(data);
       };
 
@@ -271,46 +285,14 @@
         if (done) return;
         done = true;
         cleanup();
-        const err = new Error("Network/blocked");
-        err.debugUrl = finalUrl;
-        reject(err);
+        reject(new Error("Network/blocked (перевір /exec, доступ Web App = Anyone, та відкрий debug URL вручну)"));
       };
 
-      // інколи допомагає проти надто агресивних privacy-фільтрів
-      script.referrerPolicy = "no-referrer";
+      script.src = url;
       script.async = true;
-      script.src = finalUrl;
-      document.body.appendChild(script);
+      script.referrerPolicy = "no-referrer";
+      document.head.appendChild(script);
     });
-  }
-
-  async function jsonp(action, payload, timeoutMs = 15000) {
-    let lastErr = null;
-
-    for (const base of API_BASES) {
-      try {
-        const templateUrl = buildJsonpUrl(base, action, payload, "__CALLBACK__");
-        const res = await jsonpOne(templateUrl, timeoutMs);
-        return res;
-      } catch (e) {
-        lastErr = e;
-        console.warn("[JSONP fail]", base, e);
-      }
-    }
-
-    throw lastErr || new Error("Network/blocked");
-  }
-
-  function formatErrHtml(e) {
-    const msg = (e && e.message) ? e.message : String(e);
-    const url = e && e.debugUrl ? e.debugUrl : LAST_DEBUG_URL;
-
-    let html = `❌ ${esc(msg)}`;
-    if (url) {
-      html += `<br><a href="${esc(url)}" target="_blank" rel="noopener">Відкрити debug URL вручну</a>`;
-    }
-    html += `<br><span class="tiny">Підказка: перевір Web App (Execute as: Me, Who has access: Anyone), і вимкни adblock/VPN/privacy shield в браузері.</span>`;
-    return html;
   }
 
   function genId() {
@@ -321,6 +303,7 @@
     const t = String(text || "").trim();
     if (!t) return;
 
+    // анти-дубль: якщо вже був — перенесемо нагору
     const idx = scannedCodes.findIndex(x => x.text === t);
     if (idx >= 0) scannedCodes.splice(idx, 1);
 
@@ -380,16 +363,16 @@
   async function startCamera() {
     if (running) return;
 
-    if (!API_BASES.length || !API_BASES[0]) {
-      setText("action-status", "❌ Вкажи API_BASES у index.html.");
+    if (!API_BASE || API_BASE.includes("PASTE_YOUR")) {
+      setText("action-status", "❌ Вкажи API_BASE (URL /exec) у index.html.");
       return;
     }
 
     try {
       setText("camera-status", "Запуск камери...");
       setText("action-status", "");
-      setDebugUrl("");
 
+      // ✅ Спочатку гарантуємо завантаження бібліотеки
       await ensureQrLib();
 
       qr = qr || new Html5Qrcode("qr-reader", true);
@@ -399,6 +382,7 @@
         experimentalFeatures: { useBarCodeDetectorIfSupported: true }
       };
 
+      // 1) Спочатку пробуємо стандартний спосіб (задня камера)
       try {
         await qr.start(
           { facingMode: "environment" },
@@ -409,6 +393,7 @@
       } catch (err1) {
         console.warn("facingMode start failed, trying explicit camera list:", err1);
 
+        // 2) Фолбек: беремо список камер і пробуємо вибрати задню
         const cams = await Html5Qrcode.getCameras();
         if (!cams || !cams.length) throw new Error("No cameras found");
 
@@ -431,7 +416,7 @@
     } catch (err) {
       console.error("Camera start error:", err);
       setText("camera-status", "Не вдалося запустити камеру ❌");
-      setHtml("action-status", formatErrHtml(err));
+      setText("action-status", "❌ Помилка камери: " + (err && err.message ? err.message : String(err)));
     }
   }
 
@@ -467,6 +452,7 @@
     document.getElementById("returned-comment-block").classList.remove("d-none");
     setText("returned-comment-hint", `Будуть записані ${pendingReturned.codes.length} шт. Позивний отримувача піде в "Коментар".`);
     setText("action-status", '✍️ Вкажіть: "Кому? (позивний)" та натисніть "Надіслати".');
+    document.getElementById("returnedCommentInput").focus();
   }
 
   function hideFlight() {
@@ -489,21 +475,19 @@
     }
 
     setText("action-status", `⏳ Записую “Отримали”: ${codes.length} шт...`);
-    setDebugUrl("");
 
     let okCount = 0;
     let unmatched = 0;
 
+    // по 1 коду, щоб не впиратись у довжину URL JSONP
     for (let i = 0; i < codes.length; i++) {
       const one = codes[i];
       const res = await jsonp("received", { codes: [one], meta: identity });
-
       if (res && res.ok) {
         okCount += (res.appended || 1);
         unmatched += (res.unmatched || 0);
       } else {
-        const err = new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
-        throw err;
+        throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
       }
     }
 
@@ -519,21 +503,19 @@
     }
 
     setText("action-status", `⏳ Записую “Повернули”: ${codes.length} шт...`);
-    setDebugUrl("");
 
     let okCount = 0;
     let unmatched = 0;
 
+    // по 1 коду, щоб не впиратись у довжину URL JSONP
     for (let i = 0; i < codes.length; i++) {
       const one = codes[i];
-      const res = await jsonp("returned", { codes: [one], meta: identity, commentText });
-
+      const res = await jsonp("returned", { codes: [one], meta: identity, commentText: commentText });
       if (res && res.ok) {
         okCount += (res.appended || 1);
         unmatched += (res.unmatched || 0);
       } else {
-        const err = new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
-        throw err;
+        throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
       }
     }
 
@@ -555,20 +537,41 @@
 
     const dirLabel = (dirKey === "shid") ? "Схід" : "Північ";
     setText("action-status", `⏳ Зберігаю “Вильот” (${dirLabel})...`);
-    setDebugUrl("");
 
-    const res = await jsonp("flight", { code: pendingFlight.code, dirKey, meta: identity });
-
+    const res = await jsonp("flight", { code: pendingFlight.code, dirKey: dirKey, meta: identity });
     if (res && res.ok) {
       const linkHtml = res.formUrl
-        ? `<div class="mt-1"><a href="${esc(res.formUrl)}" target="_blank" rel="noopener">Відкрити форму (${dirLabel})</a></div>`
+        ? `<div class="mt-1"><a href="${res.formUrl}" target="_blank" rel="noopener">Відкрити форму (${dirLabel})</a></div>`
         : "";
       setHtml("action-status", `✅ “Вильот” збережено (${dirLabel}).${linkHtml}`);
       hideFlight();
       clearScans();
     } else {
-      const err = new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
-      throw err;
+      throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
+    }
+  }
+
+  async function apiPingCheck(showSuccess = false) {
+    try {
+      const ping = await jsonp("ping", {}, 12000);
+      if (ping && ping.ok) {
+        if (showSuccess) setText("action-status", "✅ API ping успішний.");
+        return true;
+      }
+      setText("action-status", "⚠️ API відповів, але не OK. Перевір токен/API.");
+      return false;
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : String(e);
+      setText("action-status", "⚠️ API ping не пройшов: " + msg);
+
+      // Показуємо пряме посилання для ручної перевірки
+      const testCb = "manualcb";
+      const debugUrl = buildJsonpUrl("ping", {}, testCb);
+      setDebugInfo(
+        "Не вдалося завантажити JSONP. Відкрий URL нижче вручну. Якщо не бачиш manualcb({...}) — проблема в Apps Script deploy/access/URL.",
+        debugUrl
+      );
+      return false;
     }
   }
 
@@ -585,6 +588,7 @@
     document.getElementById("startBtn").onclick = startCamera;
     document.getElementById("stopBtn").onclick = stopCamera;
     document.getElementById("btnClear").onclick = clearScans;
+    document.getElementById("btnApiPing").onclick = () => apiPingCheck(true);
 
     document.getElementById("btnReceived").onclick = async () => {
       hideReturned();
@@ -594,7 +598,7 @@
       try {
         await sendReceived(codes);
       } catch (e) {
-        setHtml("action-status", formatErrHtml(e));
+        setText("action-status", "❌ " + (e && e.message ? e.message : String(e)));
       }
     };
 
@@ -603,7 +607,6 @@
       const codes = getCodes();
       if (!codes.length) return setText("action-status", "Немає відсканованих кодів.");
       showReturned(codes);
-      document.getElementById("returnedCommentInput").focus();
     };
 
     document.getElementById("returnedCancel").onclick = () => {
@@ -618,7 +621,7 @@
       try {
         await sendReturned(pendingReturned.codes, comment);
       } catch (e) {
-        setHtml("action-status", formatErrHtml(e));
+        setText("action-status", "❌ " + (e && e.message ? e.message : String(e)));
       }
     };
 
@@ -648,24 +651,18 @@
         try {
           await sendFlight(dir);
         } catch (e) {
-          setHtml("action-status", formatErrHtml(e));
+          setText("action-status", "❌ " + (e && e.message ? e.message : String(e)));
         }
       });
     });
 
     renderResults();
     setText("camera-status", "Натисни “Запустити камеру 📷”.");
+    setDebugInfo("Готово. Можна перевірити API через кнопку 'Перевірити API (ping)'.");
 
-    // Перевірка API одразу після відкриття
-    try {
-      const ping = await jsonp("ping", {});
-      if (ping && ping.ok) {
-        setText("action-status", "API на зв'язку ✅");
-      } else {
-        setHtml("action-status", `⚠️ API відповідає некоректно.<br>${esc(JSON.stringify(ping || {}))}`);
-      }
-    } catch (e) {
-      setHtml("action-status", formatErrHtml(e));
+    // первинна перевірка API (необов'язково)
+    if (API_BASE && !API_BASE.includes("PASTE_YOUR")) {
+      await apiPingCheck(false);
     }
   });
 
