@@ -1,654 +1,685 @@
 <!doctype html>
 <html lang="uk">
+
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>QR Scanner (External)</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>414 ОБр, ББпАК</title>
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 
-  <style>
-    body { min-height: 100vh; }
-    #qr-reader { width: 520px; max-width: 100%; box-sizing: border-box; }
+    <style>
+        body {
+            min-height: 100vh;
+        }
 
-    .code-pill {
-      word-break: break-word;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
+        #qr-reader {
+            width: 520px;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
 
-    .action-btn { padding: 0.5rem 0.6rem; }
+        .code-pill {
+            word-break: break-word;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
 
-    @media (max-width: 420px) {
-      .action-btn { padding: 0.45rem 0.45rem; font-size: 0.85rem; }
-    }
+        .action-btn {
+            padding: 0.5rem 0.6rem;
+        }
 
-    details.debug-box {
-      border: 1px solid rgba(255,255,255,.2);
-      border-radius: .5rem;
-      padding: .5rem .75rem;
-      background: rgba(255,255,255,.03);
-    }
+        @media (max-width: 420px) {
+            .action-btn {
+                padding: 0.45rem 0.45rem;
+                font-size: 0.85rem;
+            }
+        }
 
-    .small-code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      word-break: break-all;
-      font-size: .8rem;
-      opacity: .9;
-    }
+        details.debug-box {
+            border: 1px solid rgba(255, 255, 255, .2);
+            border-radius: .5rem;
+            padding: .5rem .75rem;
+            background: rgba(255, 255, 255, .03);
+        }
 
-    .status-link a { color: #9ad0ff; }
-  </style>
+        .small-code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            word-break: break-all;
+            font-size: .8rem;
+            opacity: .9;
+        }
+
+        .status-link a {
+            color: #9ad0ff;
+        }
+    </style>
 </head>
+
 <body class="bg-dark text-light d-flex flex-column">
 
-<header class="py-3 border-bottom border-secondary">
-  <div class="container text-center">
-    <div class="fw-bold" style="font-size: 1.25rem;">QR Scanner (External)</div>
-  </div>
-</header>
+    <header class="py-3 border-bottom border-secondary">
+        <div class="container text-center">
+            <div class="fw-bold" style="font-size: 1.25rem;">414 ОБр, ББпАК</div>
+        </div>
+    </header>
+
+    <main class="container py-3 flex-grow-1">
+
+        <div id="identity-info" class="small text-center mb-2 opacity-75"></div>
+
+        <div class="mb-3">
+            <div id="qr-reader" class="mt-2" style="position: relative; padding:0; border:none;"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Останній відсканований код</label>
+            <input id="lastCode" class="form-control" type="text" readonly placeholder="Наведіть камеру на QR..." />
+        </div>
+
+        <!-- 3 кнопки -->
+        <div class="mb-3">
+            <div class="d-flex gap-2 flex-nowrap justify-content-center">
+                <button class="btn btn-success flex-fill text-nowrap action-btn" type="button"
+                    id="btnReceived">Отримали📥</button>
+                <button class="btn btn-warning flex-fill text-nowrap action-btn" type="button"
+                    id="btnReturned">Повернули📤</button>
+                <button class="btn btn-danger flex-fill text-nowrap action-btn" type="button"
+                    id="btnFlight">Вильот✈️</button>
+            </div>
+
+            <div id="action-status" class="small opacity-75 text-center mt-2 status-link"></div>
+
+            <!-- Flight direction -->
+            <div id="flight-direction-block" class="mt-2 d-none">
+                <div class="small text-center mb-1">Оберіть напрямок для “Вильот✈️”</div>
+                <div class="d-flex gap-2 flex-nowrap justify-content-center">
+                    <button class="btn btn-warning flex-fill text-nowrap" type="button" data-dir="shid">Схід</button>
+                    <button class="btn btn-primary flex-fill text-nowrap" type="button"
+                        data-dir="pivnich">Північ</button>
+                    <button class="btn btn-outline-light flex-fill text-nowrap" type="button"
+                        id="flightCancel">Скасувати</button>
+                </div>
+                <div id="flight-direction-hint" class="form-text text-light opacity-75 small"></div>
+            </div>
+
+            <!-- Returned comment -->
+            <div id="returned-comment-block" class="mt-2 d-none">
+                <label for="returnedCommentInput" class="form-label mb-1 small">Кому? (позивний)</label>
+                <div class="input-group">
+                    <input id="returnedCommentInput" class="form-control" type="text" autocomplete="off"
+                        placeholder="Позивний..." />
+                    <button class="btn btn-warning text-nowrap" type="button" id="returnedSend">Надіслати</button>
+                    <button class="btn btn-outline-light text-nowrap" type="button"
+                        id="returnedCancel">Скасувати</button>
+                </div>
+                <div id="returned-comment-hint" class="form-text text-light opacity-75 small"></div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <details class="debug-box">
+                <summary class="small">Debug API</summary>
+                <div class="mt-2 d-flex gap-2 flex-wrap">
+                    <button id="btnApiPing" class="btn btn-outline-info btn-sm" type="button">Перевірити API
+                        (ping)</button>
+                </div>
+                <div id="debug-info" class="small-code mt-2"></div>
+            </details>
+        </div>
+
+        <div>
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="fw-semibold">Результати</div>
+                <button class="btn btn-outline-light btn-sm" type="button" id="btnClear">Очистити</button>
+            </div>
+            <div id="qr-reader-results"></div>
+        </div>
+
+        <!-- Кнопки керування камерою ПІСЛЯ "Результати" -->
+        <div class="mt-3">
+            <div class="d-flex justify-content-center gap-2 mb-2 flex-wrap">
+                <button id="startBtn" class="btn btn-outline-light btn-sm" type="button">Запустити камеру 📷</button>
+                <button id="stopBtn" class="btn btn-outline-light btn-sm" type="button" disabled>Стоп ⛔</button>
+            </div>
+            <div id="camera-status" class="small text-center opacity-75 mb-2"></div>
+        </div>
+    </main>
+
+    <footer class="py-3 border-top border-secondary">
+        <div class="container text-center small opacity-75">Stan's Projects Inc</div>
+    </footer>
+
+    <!-- Статичне підключення бібліотеки камери -->
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <script>
+        // =====================================================================
+        //  URL Apps Script Web App (/exec)
+        // =====================================================================
+        const API_BASE = "https://script.google.com/macros/s/AKfycbxM2VEUjPpUtPTGNiS0C38p0e7dmtxqDPAj0yROXDy3miZYENsGLaar4lS9RhBREDcZtw/exec".trim();
+
+        // scanned list
+        let scannedCodes = [];
+        let lastQr = null;
 
-<main class="container py-3 flex-grow-1">
+        // identity from URL
+        const identity = { crew: "", poz: "" };
 
-  <div id="identity-info" class="small text-center mb-2 opacity-75"></div>
+        // html5-qrcode instance
+        let qr = null;
+        let running = false;
 
-  <div class="d-flex justify-content-center gap-2 mb-2 flex-wrap">
-    <button id="startBtn" class="btn btn-outline-light btn-sm" type="button">Запустити камеру 📷</button>
-    <button id="stopBtn" class="btn btn-outline-light btn-sm" type="button" disabled>Стоп ⛔</button>
-  </div>
-  <div id="camera-status" class="small text-center opacity-75 mb-2"></div>
+        // debug
+        let lastJsonpUrl = "";
 
-  <div class="mb-3">
-    <div id="qr-reader" class="mt-2" style="position: relative; padding:0; border:none;"></div>
-  </div>
-
-  <div class="mb-3">
-    <label class="form-label">Останній відсканований код</label>
-    <input id="lastCode" class="form-control" type="text" readonly placeholder="Наведіть камеру на QR..." />
-  </div>
-
-  <!-- 3 кнопки -->
-  <div class="mb-3">
-    <div class="d-flex gap-2 flex-nowrap justify-content-center">
-      <button class="btn btn-success flex-fill text-nowrap action-btn" type="button" id="btnReceived">Отримали📥</button>
-      <button class="btn btn-warning flex-fill text-nowrap action-btn" type="button" id="btnReturned">Повернули📤</button>
-      <button class="btn btn-danger flex-fill text-nowrap action-btn" type="button" id="btnFlight">Вильот✈️</button>
-    </div>
-
-    <div id="action-status" class="small opacity-75 text-center mt-2 status-link"></div>
-
-    <!-- Flight direction -->
-    <div id="flight-direction-block" class="mt-2 d-none">
-      <div class="small text-center mb-1">Оберіть напрямок для “Вильот✈️”</div>
-      <div class="d-flex gap-2 flex-nowrap justify-content-center">
-        <button class="btn btn-primary flex-fill text-nowrap" type="button" data-dir="shid">Схід</button>
-        <button class="btn btn-primary flex-fill text-nowrap" type="button" data-dir="pivnich">Північ</button>
-        <button class="btn btn-outline-light flex-fill text-nowrap" type="button" id="flightCancel">Скасувати</button>
-      </div>
-      <div id="flight-direction-hint" class="form-text text-light opacity-75 small"></div>
-    </div>
-
-    <!-- Returned comment -->
-    <div id="returned-comment-block" class="mt-2 d-none">
-      <label for="returnedCommentInput" class="form-label mb-1 small">Кому? (позивний)</label>
-      <div class="input-group">
-        <input id="returnedCommentInput" class="form-control" type="text" autocomplete="off" placeholder="Позивний..." />
-        <button class="btn btn-warning text-nowrap" type="button" id="returnedSend">Надіслати</button>
-        <button class="btn btn-outline-light text-nowrap" type="button" id="returnedCancel">Скасувати</button>
-      </div>
-      <div id="returned-comment-hint" class="form-text text-light opacity-75 small"></div>
-    </div>
-  </div>
-
-  <div class="mb-3">
-    <details class="debug-box">
-      <summary class="small">Debug API</summary>
-      <div class="mt-2 d-flex gap-2 flex-wrap">
-        <button id="btnApiPing" class="btn btn-outline-info btn-sm" type="button">Перевірити API (ping)</button>
-      </div>
-      <div id="debug-info" class="small-code mt-2"></div>
-    </details>
-  </div>
-
-  <div>
-    <div class="d-flex align-items-center justify-content-between mb-2">
-      <div class="fw-semibold">Результати</div>
-      <button class="btn btn-outline-light btn-sm" type="button" id="btnClear">Очистити</button>
-    </div>
-    <div id="qr-reader-results"></div>
-  </div>
-</main>
-
-<footer class="py-3 border-top border-secondary">
-  <div class="container text-center small opacity-75">Stan's Projects Inc</div>
-</footer>
-
-<!-- ✅ Статичне підключення бібліотеки камери (важливо для мобілки) -->
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
-<script>
-  // =====================================================================
-  // ✅ URL Apps Script Web App (/exec)
-  // =====================================================================
-  const API_BASE = "https://script.google.com/macros/s/AKfycbxM2VEUjPpUtPTGNiS0C38p0e7dmtxqDPAj0yROXDy3miZYENsGLaar4lS9RhBREDcZtw/exec".trim();
-
-  // scanned list
-  let scannedCodes = [];
-  let lastQr = null;
-
-  // identity from URL
-  const identity = { crew: "", poz: "" };
-
-  // html5-qrcode instance
-  let qr = null;
-  let running = false;
-
-  // debug
-  let lastJsonpUrl = "";
-
-  function qs(name) {
-    const url = new URL(location.href);
-    return (url.searchParams.get(name) || "").trim();
-  }
-
-  function setText(id, text) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = text || "";
-  }
-
-  function setHtml(id, html) {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = html || "";
-  }
-
-  function escapeHtml(s) {
-    return String(s || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  function setDebugInfo(msg, extraUrl) {
-    const el = document.getElementById("debug-info");
-    if (!el) return;
-
-    let html = "";
-    if (msg) html += `<div>${escapeHtml(msg)}</div>`;
-    if (extraUrl) {
-      html += `<div class="mt-1">URL:</div>`;
-      html += `<div>${escapeHtml(extraUrl)}</div>`;
-      html += `<div class="mt-1"><a class="link-light" href="${extraUrl}" target="_blank" rel="noopener">Відкрити URL вручну</a></div>`;
-    }
-    el.innerHTML = html;
-  }
-
-  function formatErrHtml(e) {
-    const msg = (e && e.message) ? e.message : String(e);
-    const url = (e && e.debugUrl) ? e.debugUrl : lastJsonpUrl;
-
-    let html = `❌ ${escapeHtml(msg)}`;
-    if (url) {
-      html += `<br><a href="${escapeHtml(url)}" target="_blank" rel="noopener">Відкрити debug URL вручну</a>`;
-    }
-    return html;
-  }
-
-  // base64url для JSON payload (UTF-8)
-  function b64u(str) {
-    const bytes = new TextEncoder().encode(String(str || ""));
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  }
-
-  // Перевірка, що бібліотека камери вже є (вона підключена статично вище)
-  function ensureQrLibLoaded() {
-    if (!window.Html5Qrcode) {
-      throw new Error("Бібліотека html5-qrcode не завантажилась. Перевір інтернет/CDN.");
-    }
-  }
-
-  function buildJsonpUrl(action, payload, cbName) {
-    const token = qs("token") || qs("t") || "";
-    const p = b64u(JSON.stringify(payload || {}));
-
-    return (
-      API_BASE +
-      "?action=" + encodeURIComponent(action) +
-      "&token=" + encodeURIComponent(token) +
-      "&p=" + encodeURIComponent(p) +
-      "&callback=" + encodeURIComponent(cbName) +
-      "&_=" + Date.now()
-    );
-  }
-
-  function jsonp(action, payload, timeoutMs = 15000) {
-    return new Promise((resolve, reject) => {
-      const cb = "__cb_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
-      const url = buildJsonpUrl(action, payload, cb);
-
-      lastJsonpUrl = url;
-      setDebugInfo("JSONP request сформовано.", url);
-
-      const script = document.createElement("script");
-      let done = false;
-
-      const timer = setTimeout(() => {
-        if (done) return;
-        done = true;
-        cleanup();
-        const err = new Error("Timeout (API не відповів за " + timeoutMs + "мс)");
-        err.debugUrl = url;
-        reject(err);
-      }, timeoutMs);
-
-      function cleanup() {
-        clearTimeout(timer);
-        try { delete window[cb]; } catch (e) { window[cb] = undefined; }
-        if (script && script.parentNode) script.parentNode.removeChild(script);
-      }
-
-      window[cb] = (data) => {
-        if (done) return;
-        done = true;
-        cleanup();
-        setDebugInfo("JSONP callback отримано ✅", url);
-        resolve(data);
-      };
-
-      script.onerror = () => {
-        if (done) return;
-        done = true;
-        cleanup();
-        const err = new Error("Network/blocked (може блокувати браузер/adblock/privacy shield)");
-        err.debugUrl = url;
-        reject(err);
-      };
-
-      script.async = true;
-      script.referrerPolicy = "no-referrer";
-      script.src = url;
-
-      // body вже існує на момент натискання кнопок
-      document.body.appendChild(script);
-    });
-  }
-
-  function genId() {
-    return Math.random().toString(16).slice(2) + Date.now().toString(16);
-  }
-
-  function addScan(text) {
-    const t = String(text || "").trim();
-    if (!t) return;
-
-    // анти-дубль: якщо вже був — перенесемо нагору
-    const idx = scannedCodes.findIndex(x => x.text === t);
-    if (idx >= 0) scannedCodes.splice(idx, 1);
-
-    scannedCodes.unshift({ id: genId(), text: t, ts: Date.now() });
-    renderResults();
-
-    const lastCode = document.getElementById("lastCode");
-    if (lastCode) lastCode.value = t;
-  }
-
-  function renderResults() {
-    const el = document.getElementById("qr-reader-results");
-    if (!el) return;
-    el.innerHTML = "";
-
-    if (!scannedCodes.length) {
-      el.innerHTML = `<div class="p-2 mb-2 rounded bg-secondary text-white opacity-75">Немає відсканованих кодів.</div>`;
-      return;
-    }
-
-    scannedCodes.forEach((item, i) => {
-      const row = document.createElement("div");
-      row.className = "p-2 mb-2 rounded bg-success text-white code-pill d-flex align-items-center justify-content-between gap-2";
-
-      const left = document.createElement("div");
-      left.className = "flex-grow-1";
-      left.textContent = `[${i + 1}] ${item.text}`;
-
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "btn btn-sm btn-outline-light text-nowrap";
-      delBtn.textContent = "✕";
-      delBtn.title = "Видалити цей скан";
-      delBtn.onclick = () => {
-        scannedCodes = scannedCodes.filter(x => x.id !== item.id);
-        renderResults();
-      };
-
-      row.appendChild(left);
-      row.appendChild(delBtn);
-      el.appendChild(row);
-    });
-  }
-
-  function clearScans() {
-    scannedCodes = [];
-    lastQr = null;
-    renderResults();
-    const lastCode = document.getElementById("lastCode");
-    if (lastCode) lastCode.value = "";
-  }
-
-  function getCodes() {
-    return scannedCodes.map(x => x.text).filter(Boolean);
-  }
-
-  async function startCamera() {
-    if (running) return;
-
-    if (!API_BASE || API_BASE.includes("PASTE_YOUR")) {
-      setText("action-status", "❌ Вкажи API_BASE (URL /exec) у index.html.");
-      return;
-    }
-
-    try {
-      setText("camera-status", "Запуск камери...");
-      setText("action-status", "");
-
-      // ✅ Без мережевих завантажень тут — тільки перевірка
-      ensureQrLibLoaded();
-
-      qr = qr || new Html5Qrcode("qr-reader", true);
-
-      const config = {
-        fps: 10,
-        qrbox: 250,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-      };
-
-      // 1) Спочатку пробуємо стандартно (задня камера)
-      try {
-        await qr.start(
-          { facingMode: "environment" },
-          config,
-          onScanSuccess,
-          () => {}
-        );
-      } catch (err1) {
-        console.warn("facingMode start failed, trying explicit camera list:", err1);
-
-        // 2) Фолбек: список камер
-        const cams = await Html5Qrcode.getCameras();
-        if (!cams || !cams.length) throw new Error("No cameras found");
-
-        let camId = cams[0].id;
-        const rear = cams.find(c => /back|rear|environment|зад/i.test(c.label || ""));
-        if (rear) camId = rear.id;
-
-        await qr.start(
-          { deviceId: { exact: camId } },
-          config,
-          onScanSuccess,
-          () => {}
-        );
-      }
-
-      running = true;
-      document.getElementById("startBtn").disabled = true;
-      document.getElementById("stopBtn").disabled = false;
-      setText("camera-status", "Камера працює ✅");
-    } catch (err) {
-      console.error("Camera start error:", err);
-      setText("camera-status", "Не вдалося запустити камеру ❌");
-      setHtml("action-status", "❌ Помилка камери: " + escapeHtml((err && err.message) ? err.message : String(err)));
-    }
-  }
-
-  async function stopCamera() {
-    if (!qr) return;
-    try { await qr.stop(); } catch (e) {}
-    running = false;
-    document.getElementById("startBtn").disabled = false;
-    document.getElementById("stopBtn").disabled = true;
-    setText("camera-status", "Камеру зупинено.");
-  }
-
-  function onScanSuccess(decodedText) {
-    if (decodedText === lastQr) return;
-    lastQr = decodedText;
-    addScan(decodedText);
-  }
-
-  // UI flows
-  let pendingReturned = null;
-  let pendingFlight = null;
-
-  function hideReturned() {
-    pendingReturned = null;
-    const block = document.getElementById("returned-comment-block");
-    if (block) block.classList.add("d-none");
-    const input = document.getElementById("returnedCommentInput");
-    if (input) input.value = "";
-  }
-
-  function showReturned(codes) {
-    pendingReturned = { codes: codes.slice(), meta: { ...identity } };
-    document.getElementById("returned-comment-block").classList.remove("d-none");
-    setText("returned-comment-hint", `Будуть записані ${pendingReturned.codes.length} шт. Позивний отримувача піде в "Коментар".`);
-    setText("action-status", '✍️ Вкажіть: "Кому? (позивний)" та натисніть "Надіслати".');
-    document.getElementById("returnedCommentInput").focus();
-  }
-
-  function hideFlight() {
-    pendingFlight = null;
-    document.getElementById("flight-direction-block").classList.add("d-none");
-    setText("flight-direction-hint", "");
-  }
-
-  function showFlight(lastCode) {
-    pendingFlight = { code: String(lastCode || "").trim(), meta: { ...identity } };
-    document.getElementById("flight-direction-block").classList.remove("d-none");
-    setText("flight-direction-hint", "Буде збережено ОСТАННІЙ скан.");
-    setText("action-status", '✈️ Оберіть напрямок: “Схід” або “Північ”.');
-  }
-
-  async function sendReceived(codes) {
-    if (!identity.crew || !identity.poz) {
-      setText("action-status", "❌ Немає ідентифікації (crew/poz) в URL.");
-      return;
-    }
-
-    setText("action-status", `⏳ Записую “Отримали”: ${codes.length} шт...`);
-
-    let okCount = 0;
-    let unmatched = 0;
-
-    // по 1 коду, щоб не впиратись у довжину URL JSONP
-    for (let i = 0; i < codes.length; i++) {
-      const one = codes[i];
-      const res = await jsonp("received", { codes: [one], meta: identity });
-
-      if (res && res.ok) {
-        okCount += (res.appended || 1);
-        unmatched += (res.unmatched || 0);
-      } else {
-        throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
-      }
-    }
-
-    const extra = unmatched ? ` ⚠️ Не знайдено B у шапці: ${unmatched}` : "";
-    setText("action-status", `✅ Записано: ${okCount} шт.${extra}`);
-    clearScans();
-  }
-
-  async function sendReturned(codes, commentText) {
-    if (!identity.crew || !identity.poz) {
-      setText("action-status", "❌ Немає ідентифікації (crew/poz) в URL.");
-      return;
-    }
-
-    setText("action-status", `⏳ Записую “Повернули”: ${codes.length} шт...`);
-
-    let okCount = 0;
-    let unmatched = 0;
-
-    // по 1 коду, щоб не впиратись у довжину URL JSONP
-    for (let i = 0; i < codes.length; i++) {
-      const one = codes[i];
-      const res = await jsonp("returned", { codes: [one], meta: identity, commentText });
-
-      if (res && res.ok) {
-        okCount += (res.appended || 1);
-        unmatched += (res.unmatched || 0);
-      } else {
-        throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
-      }
-    }
-
-    const extra = unmatched ? ` ⚠️ Не знайдено B у шапці: ${unmatched}` : "";
-    setText("action-status", `✅ Записано: ${okCount} шт.${extra}`);
-    hideReturned();
-    clearScans();
-  }
-
-  async function sendFlight(dirKey) {
-    if (!pendingFlight || !pendingFlight.code) {
-      setText("action-status", "❌ Немає даних для “Вильот”.");
-      return;
-    }
-    if (!identity.crew) {
-      setText("action-status", "❌ Немає ідентифікації (crew) в URL.");
-      return;
-    }
-
-    const dirLabel = (dirKey === "shid") ? "Схід" : "Північ";
-    setText("action-status", `⏳ Зберігаю “Вильот” (${dirLabel})...`);
-
-    const res = await jsonp("flight", { code: pendingFlight.code, dirKey, meta: identity });
-
-    if (res && res.ok) {
-      const linkHtml = res.formUrl
-        ? `<div class="mt-1"><a href="${escapeHtml(res.formUrl)}" target="_blank" rel="noopener">Відкрити форму (${dirLabel})</a></div>`
-        : "";
-      setHtml("action-status", `✅ “Вильот” збережено (${dirLabel}).${linkHtml}`);
-      hideFlight();
-      clearScans();
-    } else {
-      throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
-    }
-  }
-
-  async function apiPingCheck(showSuccess = true) {
-    try {
-      const ping = await jsonp("ping", {}, 12000);
-      if (ping && ping.ok) {
-        if (showSuccess) setText("action-status", "✅ API ping успішний.");
-        return true;
-      }
-      setHtml("action-status", `⚠️ API відповів, але не OK.<br>${escapeHtml(JSON.stringify(ping || {}))}`);
-      return false;
-    } catch (e) {
-      setHtml("action-status", formatErrHtml(e));
-      return false;
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    identity.crew = qs("crew");
-    identity.poz = qs("poz");
-
-    if (identity.crew && identity.poz) {
-      setText("identity-info", `Екіпаж: ${identity.crew} • Позивний: ${identity.poz}`);
-    } else {
-      setText("identity-info", "⚠️ Немає ідентифікації (crew/poz) у URL. Додай ?crew=...&poz=...");
-    }
-
-    document.getElementById("startBtn").onclick = startCamera;
-    document.getElementById("stopBtn").onclick = stopCamera;
-    document.getElementById("btnClear").onclick = clearScans;
-    document.getElementById("btnApiPing").onclick = () => apiPingCheck(true);
-
-    document.getElementById("btnReceived").onclick = async () => {
-      hideReturned();
-      hideFlight();
-
-      const codes = getCodes();
-      if (!codes.length) return setText("action-status", "Немає відсканованих кодів.");
-
-      try {
-        await sendReceived(codes);
-      } catch (e) {
-        setHtml("action-status", formatErrHtml(e));
-      }
-    };
-
-    document.getElementById("btnReturned").onclick = () => {
-      hideFlight();
-
-      const codes = getCodes();
-      if (!codes.length) return setText("action-status", "Немає відсканованих кодів.");
-
-      showReturned(codes);
-    };
-
-    document.getElementById("returnedCancel").onclick = () => {
-      hideReturned();
-      setText("action-status", "Скасовано.");
-    };
-
-    document.getElementById("returnedSend").onclick = async () => {
-      if (!pendingReturned) return;
-
-      const comment = String(document.getElementById("returnedCommentInput").value || "").trim();
-      if (!comment) return setText("action-status", "❌ Вкажіть: кому? (позивний)");
-
-      try {
-        await sendReturned(pendingReturned.codes, comment);
-      } catch (e) {
-        setHtml("action-status", formatErrHtml(e));
-      }
-    };
-
-    document.getElementById("returnedCommentInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        document.getElementById("returnedSend").click();
-      }
-    });
-
-    document.getElementById("btnFlight").onclick = () => {
-      hideReturned();
-
-      const codes = getCodes();
-      const last = scannedCodes[0] ? scannedCodes[0].text : (codes[0] || "");
-      if (!last) return setText("action-status", "Немає відсканованих кодів.");
-
-      showFlight(last);
-    };
-
-    document.getElementById("flightCancel").onclick = () => {
-      hideFlight();
-      setText("action-status", "Скасовано.");
-    };
-
-    document.querySelectorAll("#flight-direction-block button[data-dir]").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const dir = btn.getAttribute("data-dir");
-        try {
-          await sendFlight(dir);
-        } catch (e) {
-          setHtml("action-status", formatErrHtml(e));
+        function qs(name) {
+            const url = new URL(location.href);
+            return (url.searchParams.get(name) || "").trim();
         }
-      });
-    });
 
-    renderResults();
-    setText("camera-status", "Натисни “Запустити камеру 📷”.");
-    setDebugInfo("Готово. Камера не пінгує API автоматично. API можна перевірити кнопкою 'Перевірити API (ping)'.");
-  });
+        function setText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text || "";
+        }
 
-  // зупинка камери при виході
-  window.addEventListener("beforeunload", async () => {
-    try { if (qr && running) await qr.stop(); } catch (e) {}
-  });
-</script>
+        function setHtml(id, html) {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = html || "";
+        }
+
+        function escapeHtml(s) {
+            return String(s || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function setDebugInfo(msg, extraUrl) {
+            const el = document.getElementById("debug-info");
+            if (!el) return;
+
+            let html = "";
+            if (msg) html += `<div>${escapeHtml(msg)}</div>`;
+            if (extraUrl) {
+                html += `<div class="mt-1">URL:</div>`;
+                html += `<div>${escapeHtml(extraUrl)}</div>`;
+                html += `<div class="mt-1"><a class="link-light" href="${extraUrl}" target="_blank" rel="noopener">Відкрити URL вручну</a></div>`;
+            }
+            el.innerHTML = html;
+        }
+
+        function formatErrHtml(e) {
+            const msg = (e && e.message) ? e.message : String(e);
+            const url = (e && e.debugUrl) ? e.debugUrl : lastJsonpUrl;
+
+            let html = `❌ ${escapeHtml(msg)}`;
+            if (url) {
+                html += `<br><a href="${escapeHtml(url)}" target="_blank" rel="noopener">Відкрити debug URL вручну</a>`;
+            }
+            return html;
+        }
+
+        // base64url для JSON payload (UTF-8)
+        function b64u(str) {
+            const bytes = new TextEncoder().encode(String(str || ""));
+            let binary = "";
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+        }
+
+        // Перевірка, що бібліотека камери вже є
+        function ensureQrLibLoaded() {
+            if (!window.Html5Qrcode) {
+                throw new Error("Бібліотека html5-qrcode не завантажилась. Перевір інтернет/CDN.");
+            }
+        }
+
+        function buildJsonpUrl(action, payload, cbName) {
+            const token = qs("token") || qs("t") || "";
+            const p = b64u(JSON.stringify(payload || {}));
+
+            return (
+                API_BASE +
+                "?action=" + encodeURIComponent(action) +
+                "&token=" + encodeURIComponent(token) +
+                "&p=" + encodeURIComponent(p) +
+                "&callback=" + encodeURIComponent(cbName) +
+                "&_=" + Date.now()
+            );
+        }
+
+        function jsonp(action, payload, timeoutMs = 15000) {
+            return new Promise((resolve, reject) => {
+                const cb = "__cb_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
+                const url = buildJsonpUrl(action, payload, cb);
+
+                lastJsonpUrl = url;
+                setDebugInfo("JSONP request сформовано.", url);
+
+                const script = document.createElement("script");
+                let done = false;
+
+                const timer = setTimeout(() => {
+                    if (done) return;
+                    done = true;
+                    cleanup();
+                    const err = new Error("Timeout (API не відповів за " + timeoutMs + "мс)");
+                    err.debugUrl = url;
+                    reject(err);
+                }, timeoutMs);
+
+                function cleanup() {
+                    clearTimeout(timer);
+                    try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+                    if (script && script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                window[cb] = (data) => {
+                    if (done) return;
+                    done = true;
+                    cleanup();
+                    setDebugInfo("JSONP callback отримано ✅", url);
+                    resolve(data);
+                };
+
+                script.onerror = () => {
+                    if (done) return;
+                    done = true;
+                    cleanup();
+                    const err = new Error("Network/blocked (може блокувати браузер/adblock/privacy shield)");
+                    err.debugUrl = url;
+                    reject(err);
+                };
+
+                script.async = true;
+                script.referrerPolicy = "no-referrer";
+                script.src = url;
+
+                document.body.appendChild(script);
+            });
+        }
+
+        function genId() {
+            return Math.random().toString(16).slice(2) + Date.now().toString(16);
+        }
+
+        function addScan(text) {
+            const t = String(text || "").trim();
+            if (!t) return;
+
+            // анти-дубль: якщо вже був — перенесе нагору
+            const idx = scannedCodes.findIndex(x => x.text === t);
+            if (idx >= 0) scannedCodes.splice(idx, 1);
+
+            scannedCodes.unshift({ id: genId(), text: t, ts: Date.now() });
+            renderResults();
+
+            const lastCode = document.getElementById("lastCode");
+            if (lastCode) lastCode.value = t;
+        }
+
+        function renderResults() {
+            const el = document.getElementById("qr-reader-results");
+            if (!el) return;
+            el.innerHTML = "";
+
+            if (!scannedCodes.length) {
+                el.innerHTML = `<div class="p-2 mb-2 rounded bg-secondary text-white opacity-75">Немає відсканованих кодів.</div>`;
+                return;
+            }
+
+            scannedCodes.forEach((item, i) => {
+                const row = document.createElement("div");
+                row.className = "p-2 mb-2 rounded bg-success text-white code-pill d-flex align-items-center justify-content-between gap-2";
+
+                const left = document.createElement("div");
+                left.className = "flex-grow-1";
+                left.textContent = `[${i + 1}] ${item.text}`;
+
+                const delBtn = document.createElement("button");
+                delBtn.type = "button";
+                delBtn.className = "btn btn-sm btn-outline-light text-nowrap";
+                delBtn.textContent = "✕";
+                delBtn.title = "Видалити цей скан";
+                delBtn.onclick = () => {
+                    scannedCodes = scannedCodes.filter(x => x.id !== item.id);
+                    renderResults();
+                };
+
+                row.appendChild(left);
+                row.appendChild(delBtn);
+                el.appendChild(row);
+            });
+        }
+
+        function clearScans() {
+            scannedCodes = [];
+            lastQr = null;
+            renderResults();
+            const lastCode = document.getElementById("lastCode");
+            if (lastCode) lastCode.value = "";
+        }
+
+        function getCodes() {
+            return scannedCodes.map(x => x.text).filter(Boolean);
+        }
+
+        async function startCamera() {
+            if (running) return;
+
+            if (!API_BASE || API_BASE.includes("PASTE_YOUR")) {
+                setText("action-status", "❌ Вкажи API_BASE (URL /exec) у index.html.");
+                return;
+            }
+
+            try {
+                setText("camera-status", "Запит доступу до камери...");
+                setText("action-status", "");
+
+                ensureQrLibLoaded();
+
+                qr = qr || new Html5Qrcode("qr-reader", true);
+
+                const config = {
+                    fps: 10,
+                    qrbox: 250,
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+                };
+
+                // 1) Спочатку пробує стандартно (задня камера)
+                try {
+                    await qr.start(
+                        { facingMode: "environment" },
+                        config,
+                        onScanSuccess,
+                        () => { }
+                    );
+                } catch (err1) {
+                    console.warn("facingMode start failed, trying explicit camera list:", err1);
+
+                    // 2) Фолбек: список камер
+                    const cams = await Html5Qrcode.getCameras();
+                    if (!cams || !cams.length) throw new Error("No cameras found");
+
+                    let camId = cams[0].id;
+                    const rear = cams.find(c => /back|rear|environment|зад/i.test(c.label || ""));
+                    if (rear) camId = rear.id;
+
+                    await qr.start(
+                        { deviceId: { exact: camId } },
+                        config,
+                        onScanSuccess,
+                        () => { }
+                    );
+                }
+
+                running = true;
+                document.getElementById("startBtn").disabled = true;
+                document.getElementById("stopBtn").disabled = false;
+                setText("camera-status", "Камера працює ✅");
+            } catch (err) {
+                console.error("Camera start error:", err);
+                setText("camera-status", "Не вдалося запустити камеру ❌");
+                setHtml(
+                    "action-status",
+                    "❌ Помилка камери: " + escapeHtml((err && err.message) ? err.message : String(err)) +
+                    "<br><span class='opacity-75'>Якщо браузер заблокував автозапуск — натисни “Запустити камеру 📷”.</span>"
+                );
+            }
+        }
+
+        async function stopCamera() {
+            if (!qr) return;
+            try { await qr.stop(); } catch (e) { }
+            running = false;
+            document.getElementById("startBtn").disabled = false;
+            document.getElementById("stopBtn").disabled = true;
+            setText("camera-status", "Камеру зупинено.");
+        }
+
+        function onScanSuccess(decodedText) {
+            if (decodedText === lastQr) return;
+            lastQr = decodedText;
+            addScan(decodedText);
+        }
+
+        // UI flows
+        let pendingReturned = null;
+        let pendingFlight = null;
+
+        function hideReturned() {
+            pendingReturned = null;
+            const block = document.getElementById("returned-comment-block");
+            if (block) block.classList.add("d-none");
+            const input = document.getElementById("returnedCommentInput");
+            if (input) input.value = "";
+        }
+
+        function showReturned(codes) {
+            pendingReturned = { codes: codes.slice(), meta: { ...identity } };
+            document.getElementById("returned-comment-block").classList.remove("d-none");
+            setText("returned-comment-hint", `Будуть записані ${pendingReturned.codes.length} шт. Позивний отримувача піде в "Коментар".`);
+            setText("action-status", '✍️ Вкажіть: "Кому? (позивний)" та натисніть "Надіслати".');
+            document.getElementById("returnedCommentInput").focus();
+        }
+
+        function hideFlight() {
+            pendingFlight = null;
+            document.getElementById("flight-direction-block").classList.add("d-none");
+            setText("flight-direction-hint", "");
+        }
+
+        function showFlight(lastCode) {
+            pendingFlight = { code: String(lastCode || "").trim(), meta: { ...identity } };
+            document.getElementById("flight-direction-block").classList.remove("d-none");
+            setText("flight-direction-hint", "Буде збережено ОСТАННІЙ скан.");
+            setText("action-status", '✈️ Оберіть напрямок: “Схід” або “Північ”.');
+        }
+
+        async function sendReceived(codes) {
+            if (!identity.crew || !identity.poz) {
+                setText("action-status", "❌ Немає ідентифікації (crew/poz) в URL.");
+                return;
+            }
+
+            setText("action-status", `⏳ Записую “Отримали”: ${codes.length} шт...`);
+
+            let okCount = 0;
+            let unmatched = 0;
+
+            for (let i = 0; i < codes.length; i++) {
+                const one = codes[i];
+                const res = await jsonp("received", { codes: [one], meta: identity });
+
+                if (res && res.ok) {
+                    okCount += (res.appended || 1);
+                    unmatched += (res.unmatched || 0);
+                } else {
+                    throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
+                }
+            }
+
+            const extra = unmatched ? ` ⚠️ Не знайдено B у шапці: ${unmatched}` : "";
+            setText("action-status", `✅ Записано: ${okCount} шт.${extra}`);
+            clearScans();
+        }
+
+        async function sendReturned(codes, commentText) {
+            if (!identity.crew || !identity.poz) {
+                setText("action-status", "❌ Немає ідентифікації (crew/poz) в URL.");
+                return;
+            }
+
+            setText("action-status", `⏳ Записую “Повернули”: ${codes.length} шт...`);
+
+            let okCount = 0;
+            let unmatched = 0;
+
+            for (let i = 0; i < codes.length; i++) {
+                const one = codes[i];
+                const res = await jsonp("returned", { codes: [one], meta: identity, commentText });
+
+                if (res && res.ok) {
+                    okCount += (res.appended || 1);
+                    unmatched += (res.unmatched || 0);
+                } else {
+                    throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
+                }
+            }
+
+            const extra = unmatched ? ` ⚠️ Не знайдено B у шапці: ${unmatched}` : "";
+            setText("action-status", `✅ Записано: ${okCount} шт.${extra}`);
+            hideReturned();
+            clearScans();
+        }
+
+        async function sendFlight(dirKey) {
+            if (!pendingFlight || !pendingFlight.code) {
+                setText("action-status", "❌ Немає даних для “Вильот”.");
+                return;
+            }
+            if (!identity.crew) {
+                setText("action-status", "❌ Немає ідентифікації (crew) в URL.");
+                return;
+            }
+
+            const dirLabel = (dirKey === "shid") ? "Схід" : "Північ";
+            setText("action-status", `⏳ Зберігаю “Вильот” (${dirLabel})...`);
+
+            const res = await jsonp("flight", { code: pendingFlight.code, dirKey, meta: identity });
+
+            if (res && res.ok) {
+                const linkHtml = res.formUrl
+                    ? `<div class="mt-1"><a href="${escapeHtml(res.formUrl)}" target="_blank" rel="noopener">Відкрити форму (${dirLabel})</a></div>`
+                    : "";
+                setHtml("action-status", `✅ “Вильот” збережено (${dirLabel}).${linkHtml}`);
+                hideFlight();
+                clearScans();
+            } else {
+                throw new Error((res && (res.error || res.message)) ? (res.error || res.message) : "Unknown error");
+            }
+        }
+
+        async function apiPingCheck(showSuccess = true) {
+            try {
+                const ping = await jsonp("ping", {}, 12000);
+                if (ping && ping.ok) {
+                    if (showSuccess) setText("action-status", "✅ API ping успішний.");
+                    return true;
+                }
+                setHtml("action-status", `⚠️ API відповів, але не OK.<br>${escapeHtml(JSON.stringify(ping || {}))}`);
+                return false;
+            } catch (e) {
+                setHtml("action-status", formatErrHtml(e));
+                return false;
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            identity.crew = qs("crew");
+            identity.poz = qs("poz");
+
+            if (identity.crew && identity.poz) {
+                setText("identity-info", `Екіпаж: ${identity.crew} • Позивний: ${identity.poz}`);
+            } else {
+                setText("identity-info", "⚠️ Немає ідентифікації (crew/poz) у URL. Додай ?crew=...&poz=...");
+            }
+
+            document.getElementById("startBtn").onclick = startCamera;
+            document.getElementById("stopBtn").onclick = stopCamera;
+            document.getElementById("btnClear").onclick = clearScans;
+            document.getElementById("btnApiPing").onclick = () => apiPingCheck(true);
+
+            document.getElementById("btnReceived").onclick = async () => {
+                hideReturned();
+                hideFlight();
+
+                const codes = getCodes();
+                if (!codes.length) return setText("action-status", "Немає відсканованих кодів.");
+
+                try {
+                    await sendReceived(codes);
+                } catch (e) {
+                    setHtml("action-status", formatErrHtml(e));
+                }
+            };
+
+            document.getElementById("btnReturned").onclick = () => {
+                hideFlight();
+
+                const codes = getCodes();
+                if (!codes.length) return setText("action-status", "Немає відсканованих кодів.");
+
+                showReturned(codes);
+            };
+
+            document.getElementById("returnedCancel").onclick = () => {
+                hideReturned();
+                setText("action-status", "Скасовано.");
+            };
+
+            document.getElementById("returnedSend").onclick = async () => {
+                if (!pendingReturned) return;
+
+                const comment = String(document.getElementById("returnedCommentInput").value || "").trim();
+                if (!comment) return setText("action-status", "❌ Вкажіть: кому? (позивний)");
+
+                try {
+                    await sendReturned(pendingReturned.codes, comment);
+                } catch (e) {
+                    setHtml("action-status", formatErrHtml(e));
+                }
+            };
+
+            document.getElementById("returnedCommentInput").addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("returnedSend").click();
+                }
+            });
+
+            document.getElementById("btnFlight").onclick = () => {
+                hideReturned();
+
+                const codes = getCodes();
+                const last = scannedCodes[0] ? scannedCodes[0].text : (codes[0] || "");
+                if (!last) return setText("action-status", "Немає відсканованих кодів.");
+
+                showFlight(last);
+            };
+
+            document.getElementById("flightCancel").onclick = () => {
+                hideFlight();
+                setText("action-status", "Скасовано.");
+            };
+
+            document.querySelectorAll("#flight-direction-block button[data-dir]").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const dir = btn.getAttribute("data-dir");
+                    try {
+                        await sendFlight(dir);
+                    } catch (e) {
+                        setHtml("action-status", formatErrHtml(e));
+                    }
+                });
+            });
+
+            renderResults();
+
+            // Автоматичний запит доступу до камери при відкритті сторінки
+            setText("camera-status", "Автозапуск камери...");
+            setDebugInfo("Готово. Камера не пінгує API автоматично. API можна перевірити кнопкою 'Перевірити API (ping)'.");
+            startCamera();
+        });
+
+        // зупинка камери при виході
+        window.addEventListener("beforeunload", async () => {
+            try { if (qr && running) await qr.stop(); } catch (e) { }
+        });
+    </script>
 
 </body>
+
 </html>
