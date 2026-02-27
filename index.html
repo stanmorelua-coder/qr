@@ -156,7 +156,7 @@
         // =====================================================================
         //  URL Apps Script Web App (/exec)
         // =====================================================================
-        const API_BASE = "https://script.google.com/macros/s/AKfycbxoXUMIHl2j0HylY1PwO-WIixqQs_J2kw4xM6uMo9ovnLU9mh4JmUuZyF0qvWjM6Io_dA/exec".trim();
+        const API_BASE = "https://script.google.com/macros/s/AKfycbx77hIRBHhhihaojjrX3HzeY8c-jhpbMH0KF_ypllUwaUaqmJSGoqRpFpxgkYP15zcc3g/exec".trim();
 
         // scanned list
         let scannedCodes = [];
@@ -171,6 +171,9 @@
 
         // debug
         let lastJsonpUrl = "";
+
+        // ✅ НОВЕ: анти-спам повідомлення про невалідний QR
+        let lastInvalidNoticeAt = 0;
 
         function qs(name) {
             const url = new URL(location.href);
@@ -305,9 +308,60 @@
             return Math.random().toString(16).slice(2) + Date.now().toString(16);
         }
 
+        // ✅ НОВЕ: decode для значень
+        function decodeMaybe(s) {
+            const raw = String(s || "").trim();
+            if (!raw) return "";
+            if (!/[+%]/.test(raw)) return raw;
+            try { return decodeURIComponent(raw.replace(/\+/g, " ")).trim(); } catch (e) { return raw; }
+        }
+
+        // ✅ НОВЕ: парсер B/C (як на бекенді)
+        function parseBCClient(text) {
+            const s = String(text || "");
+            function extract(keyChar) {
+                const key = String(keyChar).toUpperCase();
+                const re = new RegExp(
+                    key + "\\s*=\\s*([\\s\\S]*?)(?=(?:\\s*[?&;\\n,]*\\s*(?:B|C)\\s*=|$))",
+                    "i"
+                );
+                const m = s.match(re);
+                if (!m) return "";
+                return decodeMaybe(m[1]);
+            }
+            return { b: extract("B"), c: extract("C") };
+        }
+
+        // ✅ НОВЕ: валідація формату B=... C=... (обидва непорожні)
+        function isValidBCFormatClient(text) {
+            const raw = String(text || "").trim();
+            if (!raw) return false;
+
+            const hasB = /(?:^|[\s?&;,\n])B\s*=/i.test(raw);
+            const hasC = /(?:^|[\s?&;,\n])C\s*=/i.test(raw);
+            if (!hasB || !hasC) return false;
+
+            const { b, c } = parseBCClient(raw);
+            return !!(String(b || "").trim() && String(c || "").trim());
+        }
+
+        // ✅ НОВЕ: повідомлення (але без спаму)
+        function notifyInvalidQr() {
+            const now = Date.now();
+            if (now - lastInvalidNoticeAt < 1200) return;
+            lastInvalidNoticeAt = now;
+            setText("action-status", "⚠️ Ігнор: QR не у форматі B=... C=...");
+        }
+
         function addScan(text) {
             const t = String(text || "").trim();
             if (!t) return;
+
+            // ✅ НОВЕ: фільтр формату (ігноруємо)
+            if (!isValidBCFormatClient(t)) {
+                notifyInvalidQr();
+                return;
+            }
 
             // анти-дубль: якщо вже був — перенесе нагору
             const idx = scannedCodes.findIndex(x => x.text === t);
